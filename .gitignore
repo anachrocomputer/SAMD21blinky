@@ -1,0 +1,6 @@
+blinky.X/build
+blinky.X/dist
+blinky.X/.generated_files
+blinky.X/nbproject/Makefile-*
+blinky.X/nbproject/Package-*
+blinky.X/nbproject/private
