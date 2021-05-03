@@ -25,20 +25,25 @@ static void dally(const int loops)
 
 int main(void)
 {
-    PORT_REGS->GROUP[1].PORT_DIRSET = PORT_PB10;
+    PORT_REGS->GROUP[1].PORT_DIRSET = PORT_PB10;    // LED pin to output
+    PORT_REGS->GROUP[0].PORT_DIRSET = PORT_PA28;    // Logic analyser pin to output
     
     while (1)
     {
-        PORT_REGS->GROUP[1].PORT_OUTCLR = PORT_PB10;
+        PORT_REGS->GROUP[1].PORT_OUTCLR = PORT_PB10;    // LED on
+        PORT_REGS->GROUP[0].PORT_OUTSET = PORT_PA28;
         dally(250);
 
-        PORT_REGS->GROUP[1].PORT_OUTSET = PORT_PB10;
+        PORT_REGS->GROUP[1].PORT_OUTSET = PORT_PB10;    // LED off
+        PORT_REGS->GROUP[0].PORT_OUTCLR = PORT_PA28;
         dally(250);
         
-        PORT_REGS->GROUP[1].PORT_OUTCLR = PORT_PB10;
+        PORT_REGS->GROUP[1].PORT_OUTCLR = PORT_PB10;    // LED on
+        PORT_REGS->GROUP[0].PORT_OUTSET = PORT_PA28;
         dally(250);
         
-        PORT_REGS->GROUP[1].PORT_OUTSET = PORT_PB10;
+        PORT_REGS->GROUP[1].PORT_OUTSET = PORT_PB10;    // LED off
+        PORT_REGS->GROUP[0].PORT_OUTCLR = PORT_PA28;
         dally(1000);
     }
 }
