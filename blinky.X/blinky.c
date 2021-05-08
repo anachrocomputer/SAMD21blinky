@@ -7,6 +7,32 @@
 
 #include <sam.h>
 
+volatile uint32_t Milliseconds = 0;
+volatile uint8_t Tick = 0;
+
+
+/* TC3_Handler --- ISR for Timer/Counter 3 match/compare, used for 1ms ticker */
+
+void TC3_Handler(void)
+{
+    Milliseconds++;
+    Tick = 1;
+    
+    PORT_REGS->GROUP[0].PORT_OUTTGL = PORT_PA27;    // 500Hz on PA27
+    
+    // Acknowledge interrupt
+    TC3_REGS->COUNT16.TC_INTFLAG |= TC_INTFLAG_MC0(1);
+}
+
+
+/* millis --- return milliseconds since reset */
+
+uint32_t millis(void)
+{
+   return (Milliseconds);
+}
+
+
 /* dally --- CPU busy-loop for crude time delay */
 
 static void dally(const int loops)
@@ -63,30 +89,81 @@ static void initMCU(void)
 }
 
 
-int main(void)
+/* initGPIOs --- set up the GPIO pins */
+
+static void initGPIOs(void)
 {
-    initMCU();
-    
     PORT_REGS->GROUP[1].PORT_DIRSET = PORT_PB10;    // LED pin to output
     PORT_REGS->GROUP[0].PORT_DIRSET = PORT_PA28;    // Logic analyser pin to output
+    PORT_REGS->GROUP[0].PORT_DIRSET = PORT_PA27;    // 500Hz square wave
+}
+
+
+/* initMillisecondTimer --- set up a timer to interrupt every millisecond */
+
+static void initMillisecondTimer(void)
+{
+    // Select 8MHz OSC clock for GCLK1
+    GCLK_REGS->GCLK_GENCTRL = GCLK_GENCTRL_IDC(1) | GCLK_GENCTRL_GENEN(1) | GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_OSC8M_Val) | GCLK_GENCTRL_ID(1);
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    // Connect GCLK1 to TC3
+    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK1 | GCLK_CLKCTRL_ID_TCC2_TC3;
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    // Power Manager setup to clock TC3
+    PM_REGS->PM_APBCSEL = PM_APBCSEL_APBCDIV_DIV1;
+    PM_REGS->PM_APBCMASK |= PM_APBCMASK_TC3(1);
+    
+    // Set up TC3 for regular 1ms interrupt
+    TC3_REGS->COUNT16.TC_CTRLA = TC_CTRLA_MODE_COUNT16 | TC_CTRLA_PRESCALER_DIV64 | TC_CTRLA_WAVEGEN_MFRQ;
+    TC3_REGS->COUNT16.TC_CTRLC = 0;
+    TC3_REGS->COUNT16.TC_CC[0] = 125;
+    TC3_REGS->COUNT16.TC_INTENSET = TC_INTENSET_MC0(1);
+    
+    /* Set TC3 Interrupt Priority to Level 3 */
+    NVIC_SetPriority(TC3_IRQn, 3);
+    
+    /* Enable TC3 NVIC Interrupt Line */
+    NVIC_EnableIRQ(TC3_IRQn);
+    
+    TC3_REGS->COUNT16.TC_CTRLA |= TC_CTRLA_ENABLE(1);
+    
+    // Wait until TC3 is enabled
+    //while(TC3->COUNT16.STATUS.bit.SYNCBUSY == 1)
+    //    ;
+}
+
+
+int main(void)
+{
+    uint32_t end;
+    
+    initMCU();
+    initGPIOs();
+    initMillisecondTimer();
+    
+    __enable_irq();   // Enable interrupts
+    
+    end = millis() + 500;
     
     while (1)
     {
-        PORT_REGS->GROUP[1].PORT_OUTCLR = PORT_PB10;    // LED on
-        PORT_REGS->GROUP[0].PORT_OUTSET = PORT_PA28;
-        dally(250);
-
-        PORT_REGS->GROUP[1].PORT_OUTSET = PORT_PB10;    // LED off
-        PORT_REGS->GROUP[0].PORT_OUTCLR = PORT_PA28;
-        dally(250);
-        
-        PORT_REGS->GROUP[1].PORT_OUTCLR = PORT_PB10;    // LED on
-        PORT_REGS->GROUP[0].PORT_OUTSET = PORT_PA28;
-        dally(250);
-        
-        PORT_REGS->GROUP[1].PORT_OUTSET = PORT_PB10;    // LED off
-        PORT_REGS->GROUP[0].PORT_OUTCLR = PORT_PA28;
-        dally(1000);
+        if (Tick)
+        {
+            if (millis() >= end)
+            {
+                end = millis() + 500;
+                PORT_REGS->GROUP[1].PORT_OUTTGL = PORT_PB10;    // LED on PB10 toggle
+                PORT_REGS->GROUP[0].PORT_OUTTGL = PORT_PA28;    // Logic analyser pin toggle
+            }
+            
+            Tick = 0;
+        }
     }
 }
 
