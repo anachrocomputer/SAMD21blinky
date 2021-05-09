@@ -29,7 +29,16 @@ void TC3_Handler(void)
 
 uint32_t millis(void)
 {
-   return (Milliseconds);
+    return (Milliseconds);
+}
+
+
+void t1ou(const int ch)
+{
+    while ((SERCOM0_REGS->USART_INT.SERCOM_INTFLAG & SERCOM_USART_INT_INTFLAG_DRE(1)) == 0)
+        ;
+    
+    SERCOM0_REGS->USART_INT.SERCOM_DATA = ch;
 }
 
 
@@ -86,6 +95,21 @@ static void initMCU(void)
     
     while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
         ;
+    
+    // Power Manager setup for APB prescaler
+    PM_REGS->PM_APBCSEL = PM_APBCSEL_APBCDIV_DIV1;
+    
+    // Select 8MHz OSC clock for GCLK1
+    GCLK_REGS->GCLK_GENCTRL = GCLK_GENCTRL_IDC(1) | GCLK_GENCTRL_GENEN(1) | GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_OSC8M_Val) | GCLK_GENCTRL_ID(1);
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    // Select 8MHz OSC clock for GCLK2
+    GCLK_REGS->GCLK_GENCTRL = GCLK_GENCTRL_IDC(1) | GCLK_GENCTRL_GENEN(1) | GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_OSC8M_Val) | GCLK_GENCTRL_ID(2);
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
 }
 
 
@@ -99,24 +123,67 @@ static void initGPIOs(void)
 }
 
 
-/* initMillisecondTimer --- set up a timer to interrupt every millisecond */
+/* initUARTs --- set up UART(s) and buffers, and connect to 'stdout' */
 
-static void initMillisecondTimer(void)
+static void initUARTs(void)
 {
-    // Select 8MHz OSC clock for GCLK1
-    GCLK_REGS->GCLK_GENCTRL = GCLK_GENCTRL_IDC(1) | GCLK_GENCTRL_GENEN(1) | GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_OSC8M_Val) | GCLK_GENCTRL_ID(1);
+    // Connect GCLK2 to SERCOM0
+    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK2 | GCLK_CLKCTRL_ID_SERCOM0_CORE;
     
     while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
         ;
     
+    // Power Manager setup to supply clock to SERCOM0
+    PM_REGS->PM_APBCMASK |= PM_APBCMASK_SERCOM0(1);
+
+    // Set up SERCOM0 as UART0
+    SERCOM0_REGS->USART_INT.SERCOM_CTRLA = SERCOM_USART_INT_CTRLA_TXPO_PAD0 | 
+                                           SERCOM_USART_INT_CTRLA_RXPO_PAD1 |
+                                           SERCOM_USART_INT_CTRLA_FORM_USART_FRAME_NO_PARITY |
+                                           SERCOM_USART_INT_CTRLA_DORD_LSB |
+                                           SERCOM_USART_INT_CTRLA_CMODE_ASYNC |
+                                           SERCOM_USART_INT_CTRLA_SAMPR_16X_ARITHMETIC |
+                                           SERCOM_USART_INT_CTRLA_MODE_USART_INT_CLK;
+    
+    while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
+        ;
+    
+    SERCOM0_REGS->USART_INT.SERCOM_CTRLB = SERCOM_USART_INT_CTRLB_CHSIZE_8_BIT |
+                                           SERCOM_USART_INT_CTRLB_SBMODE_1_BIT |
+                                           SERCOM_USART_INT_CTRLB_TXEN(1) |
+                                           SERCOM_USART_INT_CTRLB_RXEN(1);
+    while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
+        ;
+    
+    
+    SERCOM0_REGS->USART_INT.SERCOM_BAUD = 64277;
+    //SERCOM0_REGS->USART_INT.SERCOM_INTENSET = 0;
+
+    PORT_REGS->GROUP[0].PORT_PMUX[4] = PORT_PMUX_PMUXE_C | PORT_PMUX_PMUXO_C;
+    PORT_REGS->GROUP[0].PORT_PINCFG[8] = PORT_PINCFG_PMUXEN(1);  // TxD
+    PORT_REGS->GROUP[0].PORT_PINCFG[9] = PORT_PINCFG_PMUXEN(1);  // RxD
+    
+    while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
+        ;
+    
+    SERCOM0_REGS->USART_INT.SERCOM_CTRLA |= SERCOM_USART_INT_CTRLA_ENABLE(1);
+    
+    while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
+        ;
+}
+
+
+/* initMillisecondTimer --- set up a timer to interrupt every millisecond */
+
+static void initMillisecondTimer(void)
+{
     // Connect GCLK1 to TC3
     GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK1 | GCLK_CLKCTRL_ID_TCC2_TC3;
     
     while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
         ;
     
-    // Power Manager setup to clock TC3
-    PM_REGS->PM_APBCSEL = PM_APBCSEL_APBCDIV_DIV1;
+    // Power Manager setup to supply clock to TC3
     PM_REGS->PM_APBCMASK |= PM_APBCMASK_TC3(1);
     
     // Set up TC3 for regular 1ms interrupt
@@ -145,6 +212,7 @@ int main(void)
     
     initMCU();
     initGPIOs();
+    initUARTs();
     initMillisecondTimer();
     
     __enable_irq();   // Enable interrupts
@@ -160,6 +228,13 @@ int main(void)
                 end = millis() + 500;
                 PORT_REGS->GROUP[1].PORT_OUTTGL = PORT_PB10;    // LED on PB10 toggle
                 PORT_REGS->GROUP[0].PORT_OUTTGL = PORT_PA28;    // Logic analyser pin toggle
+                t1ou('S');
+                t1ou('A');
+                t1ou('M');
+                t1ou('D');
+                t1ou('_');
+                t1ou('U');
+                t1ou('0');
             }
             
             Tick = 0;
