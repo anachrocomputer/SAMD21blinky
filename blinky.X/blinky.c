@@ -122,7 +122,7 @@ static void initMillisecondTimer(void)
     // Set up TC3 for regular 1ms interrupt
     TC3_REGS->COUNT16.TC_CTRLA = TC_CTRLA_MODE_COUNT16 | TC_CTRLA_PRESCALER_DIV64 | TC_CTRLA_WAVEGEN_MFRQ;
     TC3_REGS->COUNT16.TC_CTRLC = 0;
-    TC3_REGS->COUNT16.TC_CC[0] = 125;
+    TC3_REGS->COUNT16.TC_CC[0] = 124;
     TC3_REGS->COUNT16.TC_INTENSET = TC_INTENSET_MC0(1);
     
     /* Set TC3 Interrupt Priority to Level 3 */
