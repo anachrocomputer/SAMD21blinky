@@ -33,12 +33,25 @@ uint32_t millis(void)
 }
 
 
+/* t1ou --- send a byte to UART0 by polling */
+
 void t1ou(const int ch)
 {
     while ((SERCOM0_REGS->USART_INT.SERCOM_INTFLAG & SERCOM_USART_INT_INTFLAG_DRE(1)) == 0)
         ;
     
     SERCOM0_REGS->USART_INT.SERCOM_DATA = ch;
+}
+
+
+/* t1ou1 --- send a byte to UART1 by polling */
+
+void t1ou1(const int ch)
+{
+    while ((SERCOM1_REGS->USART_INT.SERCOM_INTFLAG & SERCOM_USART_INT_INTFLAG_DRE(1)) == 0)
+        ;
+    
+    SERCOM1_REGS->USART_INT.SERCOM_DATA = ch;
 }
 
 
@@ -127,17 +140,23 @@ static void initGPIOs(void)
 
 static void initUARTs(void)
 {
-    // Connect GCLK2 to SERCOM0
-    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK2 | GCLK_CLKCTRL_ID_SERCOM0_CORE;
+    // Connect GCLK1 to SERCOM0
+    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK1 | GCLK_CLKCTRL_ID_SERCOM0_CORE;
     
     while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
         ;
     
-    // Power Manager setup to supply clock to SERCOM0
-    PM_REGS->PM_APBCMASK |= PM_APBCMASK_SERCOM0(1);
+    // Connect GCLK2 to SERCOM1
+    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK2 | GCLK_CLKCTRL_ID_SERCOM1_CORE;
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    // Power Manager setup to supply clock to SERCOM0 and SERCOM1
+    PM_REGS->PM_APBCMASK |= PM_APBCMASK_SERCOM0(1) | PM_APBCMASK_SERCOM1(1);
 
     // Set up SERCOM0 as UART0
-    SERCOM0_REGS->USART_INT.SERCOM_CTRLA = SERCOM_USART_INT_CTRLA_TXPO_PAD0 | 
+    SERCOM0_REGS->USART_INT.SERCOM_CTRLA = SERCOM_USART_INT_CTRLA_TXPO_PAD0 |
                                            SERCOM_USART_INT_CTRLA_RXPO_PAD1 |
                                            SERCOM_USART_INT_CTRLA_FORM_USART_FRAME_NO_PARITY |
                                            SERCOM_USART_INT_CTRLA_DORD_LSB |
@@ -169,6 +188,41 @@ static void initUARTs(void)
     SERCOM0_REGS->USART_INT.SERCOM_CTRLA |= SERCOM_USART_INT_CTRLA_ENABLE(1);
     
     while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
+        ;
+    
+    // Set up SERCOM1 as UART1
+    SERCOM1_REGS->USART_INT.SERCOM_CTRLA = SERCOM_USART_INT_CTRLA_TXPO_PAD0 |
+                                           SERCOM_USART_INT_CTRLA_RXPO_PAD1 |
+                                           SERCOM_USART_INT_CTRLA_FORM_USART_FRAME_NO_PARITY |
+                                           SERCOM_USART_INT_CTRLA_DORD_LSB |
+                                           SERCOM_USART_INT_CTRLA_CMODE_ASYNC |
+                                           SERCOM_USART_INT_CTRLA_SAMPR_16X_ARITHMETIC |
+                                           SERCOM_USART_INT_CTRLA_MODE_USART_INT_CLK;
+    
+    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
+        ;
+    
+    SERCOM1_REGS->USART_INT.SERCOM_CTRLB = SERCOM_USART_INT_CTRLB_CHSIZE_8_BIT |
+                                           SERCOM_USART_INT_CTRLB_SBMODE_1_BIT |
+                                           SERCOM_USART_INT_CTRLB_TXEN(1) |
+                                           SERCOM_USART_INT_CTRLB_RXEN(1);
+    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
+        ;
+    
+    
+    SERCOM1_REGS->USART_INT.SERCOM_BAUD = 64277;
+    //SERCOM1_REGS->USART_INT.SERCOM_INTENSET = 0;
+
+    PORT_REGS->GROUP[0].PORT_PMUX[8] = PORT_PMUX_PMUXE_C | PORT_PMUX_PMUXO_C;
+    PORT_REGS->GROUP[0].PORT_PINCFG[16] = PORT_PINCFG_PMUXEN(1);  // TxD
+    PORT_REGS->GROUP[0].PORT_PINCFG[17] = PORT_PINCFG_PMUXEN(1);  // RxD
+    
+    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
+        ;
+    
+    SERCOM1_REGS->USART_INT.SERCOM_CTRLA |= SERCOM_USART_INT_CTRLA_ENABLE(1);
+    
+    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
         ;
 }
 
@@ -235,6 +289,11 @@ int main(void)
                 t1ou('_');
                 t1ou('U');
                 t1ou('0');
+                t1ou(' ');
+                
+                t1ou1('U');
+                t1ou1('1');
+                t1ou1(' ');
             }
             
             Tick = 0;
