@@ -6,6 +6,7 @@
  */
 
 #include <sam.h>
+#include <stdio.h>
 
 volatile uint32_t Milliseconds = 0;
 volatile uint8_t Tick = 0;
@@ -44,14 +45,27 @@ void t1ou(const int ch)
 }
 
 
-/* t1ou1 --- send a byte to UART1 by polling */
+/* t1ou5 --- send a byte to UART5 by polling */
 
-void t1ou1(const int ch)
+void t1ou5(const int ch)
 {
-    while ((SERCOM1_REGS->USART_INT.SERCOM_INTFLAG & SERCOM_USART_INT_INTFLAG_DRE(1)) == 0)
+    while ((SERCOM5_REGS->USART_INT.SERCOM_INTFLAG & SERCOM_USART_INT_INTFLAG_DRE(1)) == 0)
         ;
     
-    SERCOM1_REGS->USART_INT.SERCOM_DATA = ch;
+    SERCOM5_REGS->USART_INT.SERCOM_DATA = ch;
+}
+
+
+/* _mon_putc --- connect UART5 to 'stdout' */
+
+void _mon_putc(const char ch)
+{
+    if (ch == '\n')
+    {
+        t1ou5('\r');
+    }
+    
+    t1ou5(ch);
 }
 
 
@@ -136,7 +150,7 @@ static void initGPIOs(void)
 }
 
 
-/* initUARTs --- set up UART(s) and buffers, and connect to 'stdout' */
+/* initUARTs --- set up UART(s) and buffers */
 
 static void initUARTs(void)
 {
@@ -146,14 +160,8 @@ static void initUARTs(void)
     while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
         ;
     
-    // Connect GCLK2 to SERCOM1
-    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK2 | GCLK_CLKCTRL_ID_SERCOM1_CORE;
-    
-    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
-        ;
-    
-    // Power Manager setup to supply clock to SERCOM0 and SERCOM1
-    PM_REGS->PM_APBCMASK |= PM_APBCMASK_SERCOM0(1) | PM_APBCMASK_SERCOM1(1);
+    // Power Manager setup to supply clock to SERCOM0
+    PM_REGS->PM_APBCMASK |= PM_APBCMASK_SERCOM0(1);
 
     // Set up SERCOM0 as UART0
     SERCOM0_REGS->USART_INT.SERCOM_CTRLA = SERCOM_USART_INT_CTRLA_TXPO_PAD0 |
@@ -174,13 +182,12 @@ static void initUARTs(void)
     while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
         ;
     
-    
-    SERCOM0_REGS->USART_INT.SERCOM_BAUD = 64277;
+    SERCOM0_REGS->USART_INT.SERCOM_BAUD = 64277;    // 9600 baud
     //SERCOM0_REGS->USART_INT.SERCOM_INTENSET = 0;
 
     PORT_REGS->GROUP[0].PORT_PMUX[4] = PORT_PMUX_PMUXE_C | PORT_PMUX_PMUXO_C;
-    PORT_REGS->GROUP[0].PORT_PINCFG[8] = PORT_PINCFG_PMUXEN(1);  // TxD
-    PORT_REGS->GROUP[0].PORT_PINCFG[9] = PORT_PINCFG_PMUXEN(1);  // RxD
+    PORT_REGS->GROUP[0].PORT_PINCFG[8] = PORT_PINCFG_PMUXEN(1);  // PA8 TxD
+    PORT_REGS->GROUP[0].PORT_PINCFG[9] = PORT_PINCFG_PMUXEN(1);  // PA9 RxD
     
     while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
         ;
@@ -190,39 +197,48 @@ static void initUARTs(void)
     while (SERCOM0_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
         ;
     
-    // Set up SERCOM1 as UART1
-    SERCOM1_REGS->USART_INT.SERCOM_CTRLA = SERCOM_USART_INT_CTRLA_TXPO_PAD0 |
-                                           SERCOM_USART_INT_CTRLA_RXPO_PAD1 |
+    // Connect GCLK1 to SERCOM5
+    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK1 | GCLK_CLKCTRL_ID_SERCOM5_CORE;
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    // Power Manager setup to supply clock to SERCOM5
+    PM_REGS->PM_APBCMASK |= PM_APBCMASK_SERCOM5(1);
+
+    // Set up SERCOM5 as UART5
+    SERCOM5_REGS->USART_INT.SERCOM_CTRLA = SERCOM_USART_INT_CTRLA_TXPO_PAD0 |
+                                           SERCOM_USART_INT_CTRLA_RXPO_PAD2 |
                                            SERCOM_USART_INT_CTRLA_FORM_USART_FRAME_NO_PARITY |
                                            SERCOM_USART_INT_CTRLA_DORD_LSB |
                                            SERCOM_USART_INT_CTRLA_CMODE_ASYNC |
                                            SERCOM_USART_INT_CTRLA_SAMPR_16X_ARITHMETIC |
                                            SERCOM_USART_INT_CTRLA_MODE_USART_INT_CLK;
     
-    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
+    while (SERCOM5_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
         ;
     
-    SERCOM1_REGS->USART_INT.SERCOM_CTRLB = SERCOM_USART_INT_CTRLB_CHSIZE_8_BIT |
+    SERCOM5_REGS->USART_INT.SERCOM_CTRLB = SERCOM_USART_INT_CTRLB_CHSIZE_8_BIT |
                                            SERCOM_USART_INT_CTRLB_SBMODE_1_BIT |
                                            SERCOM_USART_INT_CTRLB_TXEN(1) |
                                            SERCOM_USART_INT_CTRLB_RXEN(1);
-    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
+    while (SERCOM5_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_CTRLB(1))
         ;
     
-    
-    SERCOM1_REGS->USART_INT.SERCOM_BAUD = 64277;
-    //SERCOM1_REGS->USART_INT.SERCOM_INTENSET = 0;
+    SERCOM5_REGS->USART_INT.SERCOM_BAUD = 64277;    // 9600 baud
+    //SERCOM5_REGS->USART_INT.SERCOM_INTENSET = 0;
 
-    PORT_REGS->GROUP[0].PORT_PMUX[8] = PORT_PMUX_PMUXE_C | PORT_PMUX_PMUXO_C;
-    PORT_REGS->GROUP[0].PORT_PINCFG[16] = PORT_PINCFG_PMUXEN(1);  // TxD
-    PORT_REGS->GROUP[0].PORT_PINCFG[17] = PORT_PINCFG_PMUXEN(1);  // RxD
+    PORT_REGS->GROUP[0].PORT_PMUX[11] = PORT_PMUX_PMUXE_D;
+    PORT_REGS->GROUP[1].PORT_PMUX[11] = PORT_PMUX_PMUXE_D;
+    PORT_REGS->GROUP[0].PORT_PINCFG[22] = PORT_PINCFG_PMUXEN(1);  // PA22 TxD
+    PORT_REGS->GROUP[1].PORT_PINCFG[22] = PORT_PINCFG_PMUXEN(1);  // PB22 RxD
     
-    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
+    while (SERCOM5_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
         ;
     
-    SERCOM1_REGS->USART_INT.SERCOM_CTRLA |= SERCOM_USART_INT_CTRLA_ENABLE(1);
+    SERCOM5_REGS->USART_INT.SERCOM_CTRLA |= SERCOM_USART_INT_CTRLA_ENABLE(1);
     
-    while (SERCOM1_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
+    while (SERCOM5_REGS->USART_INT.SERCOM_SYNCBUSY & SERCOM_USART_INT_SYNCBUSY_ENABLE(1))
         ;
 }
 
@@ -299,6 +315,8 @@ int main(void)
     
     __enable_irq();   // Enable interrupts
     
+    printf("\nHello from the SAM%c%d%c%d%c\n", 'D', 21, 'G', 17, 'D');
+    
     end = millis() + 500;
     
     while (1)
@@ -312,18 +330,18 @@ int main(void)
                 end = millis() + 500;
                 PORT_REGS->GROUP[1].PORT_OUTTGL = PORT_PB10;    // LED on PB10 toggle
                 PORT_REGS->GROUP[0].PORT_OUTTGL = PORT_PA28;    // Logic analyser pin toggle
-                t1ou('S');
-                t1ou('A');
-                t1ou('M');
-                t1ou('D');
-                t1ou('_');
+                t1ou5('S');
+                t1ou5('A');
+                t1ou5('M');
+                t1ou5('D');
+                t1ou5('_');
+                t1ou5('U');
+                t1ou5('5');
+                t1ou5(' ');
+                
                 t1ou('U');
                 t1ou('0');
                 t1ou(' ');
-                
-                t1ou1('U');
-                t1ou1('1');
-                t1ou1(' ');
             }
             
             Tick = 0;
