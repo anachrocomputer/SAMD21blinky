@@ -86,6 +86,77 @@ static void dally(const int loops)
 }
 
 
+/* printDeviceID --- print the Device ID bytes as read from DSU */
+
+void printDeviceID(void)
+{
+   const uint32_t did = DSU_REGS->DSU_DID;
+   
+   const uint32_t processor = (did & DSU_DID_PROCESSOR_Msk) >> DSU_DID_PROCESSOR_Pos;
+   const uint32_t family    = (did & DSU_DID_FAMILY_Msk) >> DSU_DID_FAMILY_Pos;
+   const uint32_t series    = (did & DSU_DID_SERIES_Msk) >> DSU_DID_SERIES_Pos;
+   const uint32_t die       = (did & DSU_DID_DIE_Msk) >> DSU_DID_DIE_Pos;
+   const uint32_t revision  = (did & DSU_DID_REVISION_Msk) >> DSU_DID_REVISION_Pos;
+   const uint32_t devsel    = (did & DSU_DID_DEVSEL_Msk) >> DSU_DID_DEVSEL_Pos;
+   
+   printf("Device ID = %08x %d %d %d %d %d %d\n", did, processor, family, series, die, revision, devsel);
+}
+
+
+/* printSerialNumber --- print the chip's 128-bit unique serial number */
+
+void printSerialNumber(void)
+{
+   // See SAM D21/DA1 Family datasheet DS40001882F, section 10.3.3
+   const uint32_t *const p0 = (const uint32_t *const)0x0080A00C;
+   const uint32_t *const p1 = (const uint32_t *const)0x0080A040;
+   const uint32_t *const p2 = (const uint32_t *const)0x0080A044;
+   const uint32_t *const p3 = (const uint32_t *const)0x0080A048;
+   
+   printf("Serial Number = %08x %08x %08x %08x\n", *p0, *p1, *p2, *p3);
+}
+
+
+/* printResetReason --- print the cause of the chip's reset */
+
+void printResetReason(void)
+{
+   printf("RCAUSE = 0x%02x ", PM_REGS->PM_RCAUSE);
+   
+   if (PM_REGS->PM_RCAUSE & PM_RCAUSE_SYST_Msk)
+   {
+      printf("SYST ");
+   }
+   
+   if (PM_REGS->PM_RCAUSE & PM_RCAUSE_WDT_Msk)
+   {
+      printf("WDT ");
+   }
+   
+   if (PM_REGS->PM_RCAUSE & PM_RCAUSE_EXT_Msk)
+   {
+      printf("EXT ");
+   }
+   
+   if (PM_REGS->PM_RCAUSE & PM_RCAUSE_BOD33_Msk)
+   {
+      printf("BOD33 ");
+   }
+   
+   if (PM_REGS->PM_RCAUSE & PM_RCAUSE_BOD12_Msk)
+   {
+      printf("BOD12 ");
+   }
+   
+   if (PM_REGS->PM_RCAUSE & PM_RCAUSE_POR_Msk)
+   {
+      printf("POR ");
+   }
+   
+   puts("");
+}
+
+
 /* initMCU --- set up the microcontroller in general */
 
 static void initMCU(void)
@@ -317,6 +388,10 @@ int main(void)
     
     printf("\nHello from the SAM%c%d%c%d%c\n", 'D', 21, 'G', 17, 'D');
     
+    printResetReason();
+    printDeviceID();
+    printSerialNumber();
+   
     end = millis() + 500;
     
     while (1)
