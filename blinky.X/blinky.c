@@ -260,14 +260,42 @@ static void initMillisecondTimer(void)
 }
 
 
+/* initDAC --- set up the 10-bit Digital-to-Analog Converter */
+
+static void initDAC(void)
+{
+    // Connect GCLK1 to DAC
+    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK1 | GCLK_CLKCTRL_ID_DAC;
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    // Power Manager setup to supply clock to DAC
+    PM_REGS->PM_APBCMASK |= PM_APBCMASK_DAC(1);
+    
+    // Set up I/O pins
+    PORT_REGS->GROUP[0].PORT_PMUX[1] = PORT_PMUX_PMUXE_B;
+    PORT_REGS->GROUP[0].PORT_PINCFG[2] = PORT_PINCFG_PMUXEN(1);   // Vout on PA2
+    
+    // Set up DAC registers
+    DAC_REGS->DAC_CTRLA = 0;
+    DAC_REGS->DAC_CTRLB = DAC_CTRLB_REFSEL(1) | DAC_CTRLB_EOEN(1);
+    DAC_REGS->DAC_DATA  = 0;
+    
+    DAC_REGS->DAC_CTRLA |= DAC_CTRLA_ENABLE(1);
+}
+
+
 int main(void)
 {
     uint32_t end;
+    uint16_t ramp = 0;
     
     initMCU();
     initGPIOs();
     initUARTs();
     initMillisecondTimer();
+    initDAC();
     
     __enable_irq();   // Enable interrupts
     
@@ -277,6 +305,8 @@ int main(void)
     {
         if (Tick)
         {
+            DAC_REGS->DAC_DATA = ramp++;
+            
             if (millis() >= end)
             {
                 end = millis() + 500;
