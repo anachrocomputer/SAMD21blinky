@@ -1,3 +1,7 @@
+*.o
+*.elf
+*.bin
+*.hex
 blinky.X/build
 blinky.X/dist
 blinky.X/.generated_files
