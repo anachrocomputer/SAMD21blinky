@@ -233,6 +233,9 @@ static void initMCU(void)
 
 static void initGPIOs(void)
 {
+    // Power Manager setup to supply clock to PORT
+    PM_REGS->PM_APBBMASK |= PM_APBBMASK_PORT(1);
+    
     PORT_REGS->GROUP[1].PORT_DIRSET = PORT_PB10;    // LED pin to output
     PORT_REGS->GROUP[0].PORT_DIRSET = PORT_PA28;    // Logic analyser pin to output
     PORT_REGS->GROUP[0].PORT_DIRSET = PORT_PA27;    // 500Hz square wave
