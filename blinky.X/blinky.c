@@ -157,6 +157,17 @@ void printResetReason(void)
 }
 
 
+/* nudgeWatchdog --- reset the watchdog counter */
+
+void nudgeWatchdog(void)
+{
+    if ((WDT_REGS->WDT_STATUS & WDT_STATUS_SYNCBUSY_Msk) == 0)
+    {
+        WDT_REGS->WDT_CLEAR = 0xA5;
+    }
+}
+
+
 /* initMCU --- set up the microcontroller in general */
 
 static void initMCU(void)
@@ -203,8 +214,15 @@ static void initMCU(void)
     while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
         ;
     
-    // Select 8MHz OSC clock for GCLK2
-    GCLK_REGS->GCLK_GENCTRL = GCLK_GENCTRL_IDC(1) | GCLK_GENCTRL_GENEN(1) | GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_OSC8M_Val) | GCLK_GENCTRL_ID(2);
+    // Select 32.768kHz OSCULP32K clock for GCLK2 to drive watchdog
+    GCLK_REGS->GCLK_GENDIV = GCLK_GENDIV_DIV(4) | GCLK_GENDIV_ID(2); // Divide by 32 to give 1.024kHz
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    GCLK_REGS->GCLK_GENCTRL = GCLK_GENCTRL_IDC(1) | GCLK_GENCTRL_GENEN(1) |
+                              GCLK_GENCTRL_DIVSEL_DIV2 |
+                              GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_OSCULP32K_Val) | GCLK_GENCTRL_ID(2);
     
     while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
         ;
@@ -373,6 +391,32 @@ static void initDAC(void)
 }
 
 
+/* initWatchdog --- set up the watchdog timer */
+
+static void initWatchdog(void)
+{
+    // Connect GCLK2 to WDT
+    GCLK_REGS->GCLK_CLKCTRL = GCLK_CLKCTRL_CLKEN(1) | GCLK_CLKCTRL_GEN_GCLK2 | GCLK_CLKCTRL_ID_WDT;
+    
+    while (GCLK_REGS->GCLK_STATUS & GCLK_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    // Power Manager setup to supply clock to WDT
+    PM_REGS->PM_APBAMASK |= PM_APBAMASK_WDT(1);
+    
+    WDT_REGS->WDT_CTRL = WDT_CTRL_WEN(0) | WDT_CTRL_ENABLE(0);
+    WDT_REGS->WDT_CONFIG = WDT_CONFIG_PER_16K;      // Period 16384 gives 16 seconds
+    
+    while (WDT_REGS->WDT_STATUS & WDT_STATUS_SYNCBUSY_Msk)
+        ;
+    
+    WDT_REGS->WDT_CTRL |= WDT_CTRL_ENABLE(1);  // Start the watchdog
+    
+    while (WDT_REGS->WDT_STATUS & WDT_STATUS_SYNCBUSY_Msk)
+        ;
+}
+
+
 int main(void)
 {
     uint32_t end;
@@ -383,6 +427,7 @@ int main(void)
     initUARTs();
     initMillisecondTimer();
     initDAC();
+    initWatchdog();
     
     __enable_irq();   // Enable interrupts
     
@@ -419,6 +464,7 @@ int main(void)
                 t1ou(' ');
             }
             
+            nudgeWatchdog();
             Tick = 0;
         }
     }
